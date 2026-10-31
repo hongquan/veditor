@@ -9,7 +9,7 @@ from app.pipeline.cut import (
     cut,
 )
 
-from .conftest import (
+from ..conftest import (
     assert_playable,
     generate_clip,
     open_and_inspect,

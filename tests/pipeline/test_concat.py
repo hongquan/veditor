@@ -13,7 +13,7 @@ from app.pipeline.concat import (
 )
 from app.storage import LocalDiskBackend
 
-from .conftest import (
+from ..conftest import (
     FakeStorageBackend,
     assert_playable,
     generate_clip,

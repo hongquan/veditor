@@ -71,6 +71,9 @@ query-style change. Create real rows with model instances and let the routes
 run against the fixture session.
 
 ```python
+from sqlalchemy.orm import Session
+
+
 def test_get_talk(db_session: Session):
     event = models.Event(name="Test Event")
     db_session.add(event)

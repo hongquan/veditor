@@ -4,7 +4,7 @@ import pytest
 
 from app.pipeline.outro import generate_outro_clip
 
-from .conftest import (
+from ..conftest import (
     assert_playable,
     open_and_inspect,
 )

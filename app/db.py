@@ -6,6 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from app.config import settings
 
 engine = create_engine(settings.database_url, echo=False)
+# TODO: Revise direct uses of `SessionLocal`, which by pass the designated database for testing.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
