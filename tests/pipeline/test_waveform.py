@@ -3,7 +3,8 @@
 from pathlib import Path
 
 from app.pipeline.waveform import extract_waveform_peaks
-from tests.conftest import (
+
+from .conftest import (
     generate_clip,
     generate_corrupt_clip,
 )

@@ -22,7 +22,8 @@ from app.review_handlers import (
     handle_reject,
 )
 from app.storage import get_storage_backend
-from tests.conftest import FakeStorageBackend, TestSessionLocal
+
+from .conftest import FakeStorageBackend, TestSessionLocal
 
 client = TestClient(app)
 

@@ -5,9 +5,10 @@ import pytest
 
 from app.pipeline.publish import publish
 from app.storage import LocalDiskBackend
-from tests.conftest import FakeStorageBackend, generate_clip
-from tests.test_pipeline_imports import is_forbidden
-from tests.test_storage_boundary import find_storage_violations
+
+from .conftest import FakeStorageBackend, generate_clip
+from .test_pipeline_imports import is_forbidden
+from .test_storage_boundary import find_storage_violations
 
 
 def test_publish_stores_at_expected_key_and_returns_url(

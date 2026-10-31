@@ -22,7 +22,8 @@ from app.retention import (
     validate_retention_overrides,
 )
 from app.schemas import EventCreate, EventRead
-from tests.conftest import FakeStorageBackend
+
+from .conftest import FakeStorageBackend
 
 engine = create_engine(settings.testing_database_url)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

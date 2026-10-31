@@ -11,7 +11,8 @@ from app import models
 from app.auth import hash_api_key
 from app.cli import create_admin, create_client, list_users, main, promote_user
 from app.security import hash_password, verify_password
-from tests.conftest import TestSessionLocal
+
+from .conftest import TestSessionLocal
 
 
 def _session_factory(db_session: Session) -> Callable[[], Session]:

@@ -11,7 +11,8 @@ import pytest
 
 from app.config import PREVIEW_PRESETS, PreviewPreset
 from app.pipeline.preview import generate_preview
-from tests.conftest import (
+
+from .conftest import (
     assert_duration_close,
     assert_playable,
     generate_clip,

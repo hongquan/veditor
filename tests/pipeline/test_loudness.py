@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 from app.pipeline.loudness import normalize, rescale_pts
-from tests.conftest import (
+
+from .conftest import (
     assert_playable,
     generate_clip,
     open_and_inspect,

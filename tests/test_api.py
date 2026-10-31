@@ -14,7 +14,8 @@ from app.consts import TalkStatus
 from app.db import get_db
 from app.main import app
 from app.storage import get_storage_backend
-from tests.conftest import TestSessionLocal
+
+from .conftest import TestSessionLocal
 
 client = TestClient(app)
 

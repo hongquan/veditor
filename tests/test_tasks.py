@@ -19,7 +19,8 @@ from app.tasks import (
     job_outro,
     job_waveform,
 )
-from tests.conftest import TestSessionLocal, generate_clip
+
+from .conftest import TestSessionLocal, generate_clip
 
 
 def _worker_session_factory(db_session: Session) -> Callable[[], Session]:

@@ -71,7 +71,7 @@ query-style change. Create real rows with model instances and let the routes
 run against the fixture session.
 
 ```python
-def test_get_talk(db_session):
+def test_get_talk(db_session: Session):
     event = models.Event(name="Test Event")
     db_session.add(event)
     db_session.commit()
@@ -88,11 +88,6 @@ Rules:
   the legacy API and silently passes wrong queries.
 - Keep dependency overrides only for non-DB dependencies (auth identity,
   storage backend). `db_session` already overrides `get_db`.
-- For background job functions that open their own session via
-  `SessionLocal()`, bind worker sessions to the test connection:
-  `TestSessionLocal(bind=db_session.get_bind())` and patch `SessionLocal`
-  with a factory returning such sessions, then `db_session.expire_all()`
-  before asserting persisted state.
 - Failure simulation (commit/flush errors, IntegrityError races) is the one
   acceptable place to mock: patch the session method or use a
   `sqlalchemy.event` listener (`before_commit` / `before_flush`).

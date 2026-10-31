@@ -18,7 +18,8 @@ from app.consts import TalkStatus
 from app.main import app
 from app.security import create_session_token, create_sso_token
 from app.storage import INTERMEDIATE_STAGES, LocalDiskBackend, get_storage_backend
-from tests.conftest import FakeStorageBackend, generate_clip
+
+from .conftest import FakeStorageBackend, generate_clip
 
 
 @pytest.fixture
@@ -2111,7 +2112,7 @@ def test_talk_studio_media_source_selector_and_download(
     temp_storage: LocalDiskBackend,
     tmp_path: Path,
 ) -> None:
-    from tests.conftest import generate_clip
+    from .conftest import generate_clip
 
     event = models.Event(name=f"Media Event {uuid.uuid4().hex}")
     db_session.add(event)
@@ -3714,7 +3715,8 @@ def test_attach_room_recording_url_and_source_validations(
     from datetime import UTC, datetime, timedelta
 
     from app.auth import hash_api_key
-    from tests.conftest import generate_clip
+
+    from .conftest import generate_clip
 
     user = models.User(
         email="org_val@example.com",

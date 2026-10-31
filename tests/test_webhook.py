@@ -32,7 +32,8 @@ from app.tasks import (
     job_publish,
 )
 from app.webhook import dispatch_talk_webhook, get_candidate_clients
-from tests.conftest import FakeStorageBackend, TestSessionLocal
+
+from .conftest import FakeStorageBackend, TestSessionLocal
 
 client = TestClient(app)
 

@@ -5,7 +5,8 @@ import pytest
 from PIL import Image, ImageDraw
 
 from app.pipeline.intro import generate_intro_clip
-from tests.conftest import (
+
+from .conftest import (
     assert_playable,
     generate_clip,
     open_and_inspect,

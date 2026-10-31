@@ -30,7 +30,8 @@ from app.security import (
     create_session_token,
     hash_password,
 )
-from tests.conftest import TestSessionLocal
+
+from .conftest import TestSessionLocal
 
 
 def _create_user(db: Session, **overrides: Any) -> User:

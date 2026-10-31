@@ -4,7 +4,7 @@ from pathlib import Path
 import av
 import pytest
 
-from tests.conftest import (
+from .conftest import (
     assert_duration_close,
     assert_playable,
     generate_clip,

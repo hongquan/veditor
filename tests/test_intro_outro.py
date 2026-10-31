@@ -29,7 +29,8 @@ from app.tasks import (
     job_outro,
     job_transcode,
 )
-from tests.conftest import FakeStorageBackend, TestSessionLocal, generate_clip
+
+from .conftest import FakeStorageBackend, TestSessionLocal, generate_clip
 
 client = TestClient(app)
 

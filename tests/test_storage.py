@@ -12,7 +12,8 @@ from app.storage import (
     cleanup_bumpers,
     cleanup_intermediates,
 )
-from tests.conftest import FakeStorageBackend
+
+from .conftest import FakeStorageBackend
 
 
 @pytest.fixture(params=["local", "fake"])

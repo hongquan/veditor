@@ -2,7 +2,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.pipeline.detect import DETECT_DURATION_TOLERANCE_SECONDS, detect
-from tests.conftest import (
+
+from .conftest import (
     generate_clip,
     generate_corrupt_clip,
     generate_mismatched_duration_clip,

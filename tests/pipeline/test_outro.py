@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 
 from app.pipeline.outro import generate_outro_clip
-from tests.conftest import (
+
+from .conftest import (
     assert_playable,
     open_and_inspect,
 )
