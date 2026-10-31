@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -24,7 +23,7 @@ from app.tasks import (
     job_preview,
 )
 
-from .conftest import FakeStorageBackend, TestSessionLocal
+from .conftest import FakeStorageBackend
 
 client = TestClient(app)
 
@@ -71,15 +70,6 @@ def _create_talk(
     db.commit()
     db.refresh(talk)
     return talk
-
-
-def _worker_session_factory(db_session: Session) -> Callable[[], Session]:
-    """Return a factory of job-worker sessions bound to the test connection."""
-
-    def factory() -> Session:
-        return TestSessionLocal(bind=db_session.get_bind())
-
-    return factory
 
 
 def test_post_talks_unauthorized() -> None:
@@ -848,7 +838,7 @@ def test_patch_talk_naive_datetime_comparison_normalized(db_session: Session) ->
 
 
 def test_full_pipeline_flow_recordings_to_preview_halt(
-    db_session: Session, fake_storage: FakeStorageBackend
+    db_session: Session, out_of_band_sessions, fake_storage: FakeStorageBackend
 ) -> None:
     """
     Simulates full pipeline flow from ingest to preview halt (Phase 4):
@@ -870,7 +860,6 @@ def test_full_pipeline_flow_recordings_to_preview_halt(
 
     raw_key = f"{talk.id}/raw/session.mp4"
     fake_storage.put(raw_key, b"synthetic video bytes")
-    worker_sessions = _worker_session_factory(db_session)
 
     # 1. Verify talk initial state
     resp = client.get(f"/talks/{talk.id}", headers={"X-API-Key": API_KEY})
@@ -912,7 +901,6 @@ def test_full_pipeline_flow_recordings_to_preview_halt(
         reason=None,
     )
     with (
-        patch("app.tasks.SessionLocal", side_effect=worker_sessions),
         patch("app.tasks.get_storage_backend", return_value=fake_storage),
         patch("app.tasks.detect", return_value=detect_result),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue_after_detect,
@@ -979,7 +967,6 @@ def test_full_pipeline_flow_recordings_to_preview_halt(
         Path(out).write_bytes(b"cut media")
 
     with (
-        patch("app.tasks.SessionLocal", side_effect=worker_sessions),
         patch("app.tasks.get_storage_backend", return_value=fake_storage),
         patch("app.tasks.cut", side_effect=fake_cut),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue_preview,
@@ -1005,7 +992,6 @@ def test_full_pipeline_flow_recordings_to_preview_halt(
         Path(out).write_bytes(b"preview media")
 
     with (
-        patch("app.tasks.SessionLocal", side_effect=worker_sessions),
         patch("app.tasks.get_storage_backend", return_value=fake_storage),
         patch("app.tasks.generate_preview", side_effect=fake_preview),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue_after_preview,
@@ -1027,7 +1013,7 @@ def test_full_pipeline_flow_recordings_to_preview_halt(
 
 
 def test_post_recording_with_recording_start_enqueues_detect(
-    db_session: Session, fake_storage: FakeStorageBackend
+    db_session: Session, out_of_band_sessions, fake_storage: FakeStorageBackend
 ) -> None:
     from app.pipeline.detect import DetectResult
 
@@ -1075,7 +1061,6 @@ def test_post_recording_with_recording_start_enqueues_detect(
         kw_args = {k: v for k, v in enqueued_call.kwargs.items() if k != "job_timeout"}
         assert kw_args.get("is_room_recording") is True
 
-        worker_sessions = _worker_session_factory(db_session)
         fake_storage.put(raw_key, b"fake_video_content")
         room_rec_duration = 7200.0  # 2 hours
         detect_result = DetectResult(
@@ -1087,7 +1072,6 @@ def test_post_recording_with_recording_start_enqueues_detect(
         )
 
         with (
-            patch("app.tasks.SessionLocal", side_effect=worker_sessions),
             patch("app.tasks.get_storage_backend", return_value=fake_storage),
             patch("app.tasks.detect", return_value=detect_result) as mock_detect_fn,
         ):
@@ -1314,6 +1298,7 @@ def test_handoff_eventyay_talk_resend_email_rejected(
 
 def test_job_send_speaker_handoff_email_skips_eventyay_talk(
     db_session: Session,
+    out_of_band_sessions,
 ) -> None:
     """job_send_speaker_handoff_email cleanly skips if talk event is synced from Eventyay."""
     from app.tasks import job_send_speaker_handoff_email
@@ -1323,10 +1308,7 @@ def test_job_send_speaker_handoff_email_skips_eventyay_talk(
     talk.speaker_email = "speaker@example.com"
     db_session.commit()
 
-    worker_sessions = _worker_session_factory(db_session)
-
     with (
-        patch("app.tasks.SessionLocal", side_effect=worker_sessions),
         patch("app.email.send_speaker_handoff_email") as mock_send,
     ):
         result = job_send_speaker_handoff_email(talk.id)

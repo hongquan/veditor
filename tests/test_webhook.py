@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from email.message import Message
 from pathlib import Path
@@ -33,7 +32,7 @@ from app.tasks import (
 )
 from app.webhook import dispatch_talk_webhook, get_candidate_clients
 
-from .conftest import FakeStorageBackend, TestSessionLocal
+from .conftest import FakeStorageBackend
 
 client = TestClient(app)
 
@@ -80,15 +79,6 @@ def _create_talk(
     db.commit()
     db.refresh(talk)
     return talk
-
-
-def _worker_session_factory(db_session: Session) -> Callable[[], Session]:
-    """Return a factory of job-worker sessions bound to the test connection."""
-
-    def factory() -> Session:
-        return TestSessionLocal(bind=db_session.get_bind())
-
-    return factory
 
 
 # --- 1. Registration & API Lifecycle Tests ---
@@ -672,7 +662,9 @@ def test_review_needs_work_triggers_bounds_pending_webhook(db_session: Session) 
         assert dispatched_payload["external_id"] == "TALK_15_EXT"
 
 
-def test_job_preview_dispatches_preview_ready_webhook(db_session: Session) -> None:
+def test_job_preview_dispatches_preview_ready_webhook(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Completing job_preview transitions talk to preview and dispatches talk.preview_ready."""
     event = _create_event(db_session)
     _create_api_client(
@@ -698,7 +690,6 @@ def test_job_preview_dispatches_preview_ready_webhook(db_session: Session) -> No
         Path(dst).write_bytes(b"preview video bytes")
 
     with (
-        patch("app.tasks.SessionLocal", _worker_session_factory(db_session)),
         patch("app.tasks.get_storage_backend", return_value=fake_storage),
         patch("app.tasks.generate_preview", side_effect=fake_generate_preview),
         patch("app.tasks._cache_waveform"),
@@ -725,7 +716,9 @@ def test_job_preview_dispatches_preview_ready_webhook(db_session: Session) -> No
     assert reloaded_talk.status == TalkStatus.PREVIEW
 
 
-def test_job_publish_dispatches_talk_published_webhook(db_session: Session) -> None:
+def test_job_publish_dispatches_talk_published_webhook(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Completing job_publish transitions talk to done and dispatches talk.published with video_url and duration."""
     event = _create_event(db_session)
     _create_api_client(
@@ -748,7 +741,6 @@ def test_job_publish_dispatches_talk_published_webhook(db_session: Session) -> N
     fake_storage.put(f"{talk.id}/transcode/master.mp4", b"final master video bytes")
 
     with (
-        patch("app.tasks.SessionLocal", _worker_session_factory(db_session)),
         patch("app.tasks.get_storage_backend", return_value=fake_storage),
         patch("app.tasks.publish"),
         patch("app.tasks.cleanup_intermediates"),
@@ -778,7 +770,9 @@ def test_job_publish_dispatches_talk_published_webhook(db_session: Session) -> N
     assert reloaded_talk.status == TalkStatus.DONE
 
 
-def test_job_publish_uses_custom_base_url(db_session: Session) -> None:
+def test_job_publish_uses_custom_base_url(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """When settings.base_url is configured, video_url is prefixed accordingly."""
     event = _create_event(db_session)
     _create_api_client(
@@ -801,7 +795,6 @@ def test_job_publish_uses_custom_base_url(db_session: Session) -> None:
 
     with (
         patch.object(settings, "base_url", "https://veditor.example.org"),
-        patch("app.tasks.SessionLocal", _worker_session_factory(db_session)),
         patch("app.tasks.get_storage_backend", return_value=fake_storage),
         patch("app.tasks.publish"),
         patch("app.tasks.cleanup_intermediates"),

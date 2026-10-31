@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -20,16 +19,7 @@ from app.tasks import (
     job_waveform,
 )
 
-from .conftest import TestSessionLocal, generate_clip
-
-
-def _worker_session_factory(db_session: Session) -> Callable[[], Session]:
-    """Return a factory of job-worker sessions bound to the test connection."""
-
-    def factory() -> Session:
-        return TestSessionLocal(bind=db_session.get_bind())
-
-    return factory
+from .conftest import generate_clip
 
 
 @pytest.fixture
@@ -41,7 +31,7 @@ def mock_storage() -> MagicMock:
 
 
 def test_job_ingest_success(
-    db_session: Session, mock_storage: MagicMock, tmp_path: Path
+    db_session: Session, out_of_band_sessions, mock_storage: MagicMock, tmp_path: Path
 ) -> None:
     event = Event(name="Test Event")
     db_session.add(event)
@@ -63,10 +53,6 @@ def test_job_ingest_success(
     staged_file.write_bytes(b"dummy video data")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.validate_media_file", return_value=None),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
@@ -94,6 +80,7 @@ def test_job_ingest_success(
 
 def test_dispatch_assembly_generated_intro_enqueues_job_intro(
     db_session: Session,
+    out_of_band_sessions,
 ) -> None:
     event = Event(name="Test Event")
     db_session.add(event)
@@ -113,10 +100,6 @@ def test_dispatch_assembly_generated_intro_enqueues_job_intro(
     db_session.commit()
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_light_enqueue,
     ):
         dispatch_assembly(talk.id, cut_key=f"{talk.id}/cut/special.mp4")
@@ -132,6 +115,7 @@ def test_dispatch_assembly_generated_intro_enqueues_job_intro(
 
 def test_dispatch_assembly_intro_done_outro_generated_enqueues_job_outro(
     db_session: Session,
+    out_of_band_sessions,
 ) -> None:
     event = Event(name="Test Event")
     db_session.add(event)
@@ -154,10 +138,6 @@ def test_dispatch_assembly_intro_done_outro_generated_enqueues_job_outro(
     db_session.commit()
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_light_enqueue,
     ):
         dispatch_assembly(talk.id, cut_key=f"{talk.id}/cut/special.mp4")
@@ -241,7 +221,9 @@ def test_job_waveform_generates_when_needed() -> None:
     )
 
 
-def test_job_ingest_room_url_success(db_session: Session, tmp_path: Path) -> None:
+def test_job_ingest_room_url_success(
+    db_session: Session, out_of_band_sessions, tmp_path: Path
+) -> None:
     clip = generate_clip(1.0, output_dir=tmp_path)
     now = datetime(2026, 9, 25, 10, 0, 0, tzinfo=UTC)
 
@@ -271,10 +253,6 @@ def test_job_ingest_room_url_success(db_session: Session, tmp_path: Path) -> Non
     mock_storage.free_bytes.return_value = 10**10
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.download_media_url", return_value=clip),
         patch("app.tasks.container_duration_seconds", return_value=3600.0),
@@ -305,6 +283,7 @@ def test_job_ingest_room_url_success(db_session: Session, tmp_path: Path) -> Non
 
 def test_job_ingest_room_url_download_failure_handles_cleanup(
     db_session: Session,
+    out_of_band_sessions,
 ) -> None:
     now = datetime(2026, 9, 25, 10, 0, 0, tzinfo=UTC)
     event = Event(name="Test Event")
@@ -322,10 +301,6 @@ def test_job_ingest_room_url_download_failure_handles_cleanup(
     db_session.commit()
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch(
             "app.tasks.download_media_url",
             side_effect=RuntimeError("Network download error"),
@@ -483,23 +458,21 @@ def _create_talk(
 
 
 def _run_detect_with_seed(
-    db_session: Session, talk_id: int, recording_start: datetime | None
+    db_session: Session,
+    talk_id: int,
+    recording_start: datetime | None,
 ) -> None:
     mock_storage = MagicMock()
     mock_storage.get.return_value = Path("/tmp/fake.mp4")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.detect", return_value=_make_detect_result(14400.0)),
     ):
         job_detect(talk_id, "1/raw/raw.mp4", recording_start)
 
 
-def test_seed_cut_bounds_happy_path(db_session: Session) -> None:
+def test_seed_cut_bounds_happy_path(db_session: Session, out_of_band_sessions) -> None:
     """Seeds cut_start/cut_end from schedule offsets when both are unset."""
     # Recording started at 09:00 UTC; talk is 09:15–09:55
     talk = _create_talk(
@@ -519,7 +492,9 @@ def test_seed_cut_bounds_happy_path(db_session: Session) -> None:
     assert reloaded.status == "pending_approval"
 
 
-def test_seed_cut_bounds_no_overwrite_when_already_set(db_session: Session) -> None:
+def test_seed_cut_bounds_no_overwrite_when_already_set(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Does not overwrite existing cut_start/cut_end if user already set them."""
     talk = _create_talk(
         db_session,
@@ -540,7 +515,9 @@ def test_seed_cut_bounds_no_overwrite_when_already_set(db_session: Session) -> N
     assert reloaded.cut_end == pytest.approx(1800.0)
 
 
-def test_seed_cut_bounds_no_op_without_recording_start(db_session: Session) -> None:
+def test_seed_cut_bounds_no_op_without_recording_start(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Bounds stay None when recording_start is not provided (graceful degradation)."""
     talk = _create_talk(
         db_session,
@@ -558,7 +535,9 @@ def test_seed_cut_bounds_no_op_without_recording_start(db_session: Session) -> N
     assert reloaded.status == "pending_approval"
 
 
-def test_seed_cut_bounds_talk_entirely_outside_recording(db_session: Session) -> None:
+def test_seed_cut_bounds_talk_entirely_outside_recording(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Skips seeding when offset_e <= offset_s (talk is before the recording start)."""
     # Recording started at 10:00; talk ended before that
     talk = _create_talk(
@@ -578,7 +557,9 @@ def test_seed_cut_bounds_talk_entirely_outside_recording(db_session: Session) ->
     assert reloaded.cut_end is None
 
 
-def test_seed_cut_bounds_clamped_to_duration(db_session: Session) -> None:
+def test_seed_cut_bounds_clamped_to_duration(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """cut_end is clamped to raw_duration_seconds when talk extends past the recording."""
     # Recording started at 09:00; 4 h long (14400 s); talk goes until 13:15 → end at 15300 s > 14400
     talk = _create_talk(

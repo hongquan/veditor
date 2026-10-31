@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.auth import hash_api_key, lock_active_admins
-from app.db import SessionLocal
+from app.db import new_session
 from app.schemas import WebhookRegisterRequest
 from app.security import hash_password, is_valid_email
 
@@ -245,7 +245,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "admin":
-        db = SessionLocal()
+        db = new_session()
         try:
             if args.subcommand == "create-client":
                 if args.webhook_url is not None or args.webhook_secret is not None:

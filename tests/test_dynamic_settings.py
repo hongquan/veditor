@@ -300,7 +300,7 @@ def test_pipeline_job_detect_dynamic_tolerance() -> None:
         return session
 
     with (
-        patch("app.tasks.SessionLocal", side_effect=mock_db),
+        patch("app.db.SessionLocal", side_effect=mock_db),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.detect", mock_detect),
     ):
@@ -346,7 +346,7 @@ def test_pipeline_job_loudness_dynamic_lufs() -> None:
         return session
 
     with (
-        patch("app.tasks.SessionLocal", side_effect=mock_db),
+        patch("app.db.SessionLocal", side_effect=mock_db),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.normalize", mock_normalize),
         patch("app.tasks.heavy_queue.enqueue"),
@@ -405,7 +405,7 @@ def test_pipeline_job_preview_dynamic_preset() -> None:
     session.get.side_effect = mock_get
 
     with (
-        patch("app.tasks.SessionLocal", return_value=session),
+        patch("app.db.SessionLocal", return_value=session),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.generate_preview", mock_preview),
         patch("app.tasks._cache_waveform"),
@@ -463,7 +463,7 @@ def test_pipeline_job_transcode_dynamic_preset() -> None:
     session.get.side_effect = mock_get
 
     with (
-        patch("app.tasks.SessionLocal", return_value=session),
+        patch("app.db.SessionLocal", return_value=session),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.transcode", mock_transcode),
         patch("app.tasks.light_queue.enqueue"),

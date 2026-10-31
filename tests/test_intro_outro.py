@@ -1,6 +1,5 @@
 """Tests for assembly configuration endpoint (POST /talks/{talk_id}/assemble) and assembly workflow."""
 
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -30,18 +29,9 @@ from app.tasks import (
     job_transcode,
 )
 
-from .conftest import FakeStorageBackend, TestSessionLocal, generate_clip
+from .conftest import FakeStorageBackend, generate_clip
 
 client = TestClient(app)
-
-
-def _worker_session_factory(db_session: Session) -> Callable[[], Session]:
-    """Return a factory of job-worker sessions bound to the test connection."""
-
-    def factory() -> Session:
-        return TestSessionLocal(bind=db_session.get_bind())
-
-    return factory
 
 
 @pytest.fixture
@@ -356,6 +346,7 @@ def test_intro_outro_custom_path_corrupt_or_not_found(
 
 def test_intro_outro_skip_both_success(
     db_session: Session,
+    out_of_band_sessions,
     auth_client: models.Client,
     fake_storage: FakeStorageBackend,
     stored_talk: models.Talk,
@@ -365,10 +356,6 @@ def test_intro_outro_skip_both_success(
     app.dependency_overrides[get_storage_backend] = lambda: fake_storage
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         response = client.post(
@@ -408,6 +395,7 @@ def test_intro_outro_skip_both_success(
 
 def test_intro_outro_generated_both_success(
     db_session: Session,
+    out_of_band_sessions,
     auth_client: models.Client,
     fake_storage: FakeStorageBackend,
     stored_talk: models.Talk,
@@ -417,10 +405,6 @@ def test_intro_outro_generated_both_success(
     app.dependency_overrides[get_storage_backend] = lambda: fake_storage
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         response = client.post(
@@ -458,6 +442,7 @@ def test_intro_outro_generated_both_success(
 
 def test_intro_outro_custom_intro_stages_and_enqueues_outro(
     db_session: Session,
+    out_of_band_sessions,
     auth_client: models.Client,
     fake_storage: FakeStorageBackend,
     stored_talk: models.Talk,
@@ -472,10 +457,6 @@ def test_intro_outro_custom_intro_stages_and_enqueues_outro(
     app.dependency_overrides[get_storage_backend] = lambda: fake_storage
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         response = client.post(
@@ -509,6 +490,7 @@ def test_intro_outro_custom_intro_stages_and_enqueues_outro(
 
 def test_intro_outro_custom_outro_stages_and_enqueues_intro(
     db_session: Session,
+    out_of_band_sessions,
     auth_client: models.Client,
     fake_storage: FakeStorageBackend,
     stored_talk: models.Talk,
@@ -523,10 +505,6 @@ def test_intro_outro_custom_outro_stages_and_enqueues_intro(
     app.dependency_overrides[get_storage_backend] = lambda: fake_storage
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         response = client.post(
@@ -560,6 +538,7 @@ def test_intro_outro_custom_outro_stages_and_enqueues_intro(
 
 def test_intro_outro_custom_both_stages_and_enqueues_concat(
     db_session: Session,
+    out_of_band_sessions,
     auth_client: models.Client,
     fake_storage: FakeStorageBackend,
     stored_talk: models.Talk,
@@ -575,10 +554,6 @@ def test_intro_outro_custom_both_stages_and_enqueues_concat(
     app.dependency_overrides[get_storage_backend] = lambda: fake_storage
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         response = client.post(
@@ -615,6 +590,7 @@ def test_intro_outro_custom_both_stages_and_enqueues_concat(
 
 def test_intro_outro_custom_cut_key_threading(
     db_session: Session,
+    out_of_band_sessions,
     fake_storage: FakeStorageBackend,
     auth_client: models.Client,
     stored_talk: models.Talk,
@@ -629,10 +605,6 @@ def test_intro_outro_custom_cut_key_threading(
     app.dependency_overrides[get_storage_backend] = lambda: fake_storage
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         response = client.post(
@@ -656,7 +628,9 @@ def test_intro_outro_custom_cut_key_threading(
     )
 
 
-def test_dispatch_assembly_both_done_enqueues_job_concat(db_session: Session) -> None:
+def test_dispatch_assembly_both_done_enqueues_job_concat(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """dispatch_assembly enqueues job_concat when both intro and outro jobs are completed."""
     talk = _create_stored_talk(
         db_session,
@@ -675,10 +649,6 @@ def test_dispatch_assembly_both_done_enqueues_job_concat(db_session: Session) ->
     db_session.commit()
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         dispatch_assembly(talk.id, cut_key=f"{talk.id}/cut/cut.mp4")
@@ -694,7 +664,9 @@ def test_dispatch_assembly_both_done_enqueues_job_concat(db_session: Session) ->
     )
 
 
-def test_job_concat_success_enqueues_job_loudness(db_session: Session) -> None:
+def test_job_concat_success_enqueues_job_loudness(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """job_concat executes concat, leaves talk in assembling, and enqueues job_loudness."""
     talk = _create_stored_talk(db_session, status="assembling")
 
@@ -702,10 +674,6 @@ def test_job_concat_success_enqueues_job_loudness(db_session: Session) -> None:
     mock_storage.get.return_value = Path("/tmp/fake_cut.mp4")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.concat") as mock_concat,
         patch("app.tasks.light_queue.enqueue") as mock_light_enqueue,
@@ -744,7 +712,9 @@ def test_job_concat_success_enqueues_job_loudness(db_session: Session) -> None:
     )
 
 
-def test_job_loudness_success_advances_to_transcoding(db_session: Session) -> None:
+def test_job_loudness_success_advances_to_transcoding(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """job_loudness executes normalize, advances talk to transcoding, and enqueues job_transcode."""
     talk = _create_stored_talk(db_session, status="assembling")
 
@@ -752,10 +722,6 @@ def test_job_loudness_success_advances_to_transcoding(db_session: Session) -> No
     mock_storage.get.return_value = Path("/tmp/fake_concat.mp4")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.normalize") as mock_normalize,
         patch("app.tasks.heavy_queue.enqueue") as mock_heavy_enqueue,
@@ -786,7 +752,9 @@ def test_job_loudness_success_advances_to_transcoding(db_session: Session) -> No
     )
 
 
-def test_job_loudness_failure_marks_talk_broken(db_session: Session) -> None:
+def test_job_loudness_failure_marks_talk_broken(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """job_loudness failure invokes _handle_failure and marks talk broken."""
     talk = _create_stored_talk(db_session, status="assembling")
 
@@ -794,10 +762,6 @@ def test_job_loudness_failure_marks_talk_broken(db_session: Session) -> None:
     mock_storage.get.return_value = Path("/tmp/fake_concat.mp4")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.normalize", side_effect=RuntimeError("Loudnorm filter error")),
         patch("app.tasks._handle_failure") as mock_fail,
@@ -819,7 +783,9 @@ def test_job_loudness_failure_marks_talk_broken(db_session: Session) -> None:
     assert call_args[1] == job.id
 
 
-def test_job_concat_failure_marks_talk_broken(db_session: Session) -> None:
+def test_job_concat_failure_marks_talk_broken(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """job_concat failure invokes _handle_failure and marks talk broken."""
     talk = _create_stored_talk(db_session, status="assembling")
 
@@ -827,10 +793,6 @@ def test_job_concat_failure_marks_talk_broken(db_session: Session) -> None:
     mock_storage.get.return_value = Path("/tmp/fake_cut.mp4")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.concat", side_effect=RuntimeError("FFmpeg concat failure")),
         patch("app.tasks._handle_failure") as mock_fail,
@@ -854,17 +816,15 @@ def test_job_concat_failure_marks_talk_broken(db_session: Session) -> None:
     assert call_args[1] == job.id
 
 
-def test_job_intro_assembling_invokes_dispatch_assembly(db_session: Session) -> None:
+def test_job_intro_assembling_invokes_dispatch_assembly(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """job_intro in assembling status completes and triggers dispatch_assembly without DetachedInstanceError."""
     talk = _create_stored_talk(db_session, status="assembling")
     mock_storage = MagicMock()
     mock_storage.get.return_value = Path("/tmp/fake_cut.mp4")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.generate_intro_clip"),
         patch("app.tasks.dispatch_assembly") as mock_dispatch,
@@ -885,17 +845,15 @@ def test_job_intro_assembling_invokes_dispatch_assembly(db_session: Session) -> 
     mock_dispatch.assert_called_once_with(talk.id, f"{talk.id}/cut/cut.mp4")
 
 
-def test_job_outro_assembling_invokes_dispatch_assembly(db_session: Session) -> None:
+def test_job_outro_assembling_invokes_dispatch_assembly(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """job_outro in assembling status completes and triggers dispatch_assembly without DetachedInstanceError."""
     talk = _create_stored_talk(db_session, status="assembling")
     mock_storage = MagicMock()
     mock_storage.get.return_value = Path("/tmp/fake_cut.mp4")
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.generate_outro_clip"),
         patch("app.tasks.dispatch_assembly") as mock_dispatch,
@@ -1113,6 +1071,7 @@ def test_upload_bumper_file_talk_not_found(
 
 def test_upload_bumper_and_assemble_flow(
     db_session: Session,
+    out_of_band_sessions,
     auth_client: models.Client,
     fake_storage: FakeStorageBackend,
     stored_talk: models.Talk,
@@ -1134,10 +1093,6 @@ def test_upload_bumper_and_assemble_flow(
     uploaded_path = upload_resp.json()["path"]
 
     with (
-        patch(
-            "app.tasks.SessionLocal",
-            side_effect=_worker_session_factory(db_session),
-        ),
         patch("app.tasks.light_queue.enqueue") as mock_enqueue,
     ):
         assemble_resp = client.post(

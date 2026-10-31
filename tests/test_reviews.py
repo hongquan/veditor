@@ -23,7 +23,7 @@ from app.review_handlers import (
 )
 from app.storage import get_storage_backend
 
-from .conftest import FakeStorageBackend, TestSessionLocal
+from .conftest import FakeStorageBackend
 
 client = TestClient(app)
 
@@ -705,7 +705,7 @@ def test_review_needs_work_transitions_to_pending_bounds_retains_offsets_and_no_
 
 
 def test_needs_work_subsequent_cut_overwrites_outputs(
-    db_session: Session, fake_storage: FakeStorageBackend
+    db_session: Session, out_of_band_sessions, fake_storage: FakeStorageBackend
 ) -> None:
     """Verify that after needs_work transitions to pending_bounds with bounds intact:
 
@@ -790,12 +790,7 @@ def test_needs_work_subsequent_cut_overwrites_outputs(
         assert call_args[0][2] == f"{talk.id}/raw/video.mp4"
 
     # Step 3: Run queued cut and preview workers to overwrite artifacts.
-    # The job functions open their own sessions; bind them to the test
-    # connection so they see the uncommitted outer transaction.
-    job_db = TestSessionLocal(bind=db_session.get_bind())
-
     with (
-        patch("app.tasks.SessionLocal", return_value=job_db),
         patch("app.tasks.get_storage_backend", return_value=fake_storage),
         patch(
             "app.tasks.cut",
@@ -827,8 +822,6 @@ def test_needs_work_subsequent_cut_overwrites_outputs(
         assert reloaded is not None
         assert reloaded.status == "preview"
         assert mock_preview_enqueue.call_count == 1
-
-    job_db.close()
 
     assert fake_storage.get(f"{talk.id}/cut/cut.mp4").read_bytes() == (
         b"new cut content v2"

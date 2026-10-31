@@ -182,10 +182,10 @@ def verify_session_token_not_revoked(
         user_id = payload.get("user_id")
         if user_id:
             try:
-                from app.db import SessionLocal
+                from app.db import new_session
                 from app.models import User
 
-                with SessionLocal() as db:
+                with new_session() as db:
                     db_user = db.get(User, user_id)
                     if db_user:
                         session_revoked_at = db_user.session_revoked_at

@@ -101,14 +101,14 @@ def run_retention_sweep(
     from sqlalchemy.exc import SQLAlchemyError
     from sqlalchemy.orm import joinedload
 
-    from app.db import SessionLocal
+    from app.db import new_session
     from app.models import Talk
     from app.storage import get_storage_backend
 
     logger = logging.getLogger(__name__)
 
     if db is None:
-        with SessionLocal() as session:
+        with new_session() as session:
             return run_retention_sweep(db=session, storage=storage)
 
     if storage is None:

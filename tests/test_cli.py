@@ -1,9 +1,9 @@
 import io
 import sys
-from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pytest import CaptureFixture
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,17 +11,6 @@ from app import models
 from app.auth import hash_api_key
 from app.cli import create_admin, create_client, list_users, main, promote_user
 from app.security import hash_password, verify_password
-
-from .conftest import TestSessionLocal
-
-
-def _session_factory(db_session: Session) -> Callable[[], Session]:
-    """Return a factory of CLI sessions bound to the test connection."""
-
-    def factory() -> Session:
-        return TestSessionLocal(bind=db_session.get_bind())
-
-    return factory
 
 
 def _create_user(
@@ -51,7 +40,7 @@ def _printed_api_key(output: str) -> str:
 
 
 def test_create_client_with_new_event(
-    db_session: Session, capsys: pytest.CaptureFixture[str]
+    db_session: Session, capsys: CaptureFixture[str]
 ) -> None:
     create_client(db_session, event_name="New Event", event_id=None)
 
@@ -66,7 +55,7 @@ def test_create_client_with_new_event(
 
 
 def test_create_client_with_existing_event(
-    db_session: Session, capsys: pytest.CaptureFixture[str]
+    db_session: Session, capsys: CaptureFixture[str]
 ) -> None:
     event = models.Event(name="Existing")
     db_session.add(event)
@@ -101,11 +90,10 @@ def test_create_client_invalid_event_id(db_session: Session) -> None:
 
 
 def test_cli_main_create_client(
-    db_session: Session, capsys: pytest.CaptureFixture[str]
+    db_session: Session, out_of_band_sessions: None, capsys: CaptureFixture[str]
 ) -> None:
     test_args = ["veditor", "admin", "create-client", "--event-name", "Test"]
     with (
-        patch("app.cli.SessionLocal", side_effect=_session_factory(db_session)),
         patch.object(sys, "argv", test_args),
     ):
         main()
@@ -207,17 +195,13 @@ def test_promote_user_demote_admin_allowed_with_multiple_admins(
     assert reloaded.role == "organizer"
 
 
-def test_list_users_empty(
-    capsys: pytest.CaptureFixture[str], db_session: Session
-) -> None:
+def test_list_users_empty(capsys: CaptureFixture[str], db_session: Session) -> None:
     list_users(db_session)
     captured = capsys.readouterr()
     assert "No users found." in captured.out
 
 
-def test_list_users_populated(
-    capsys: pytest.CaptureFixture[str], db_session: Session
-) -> None:
+def test_list_users_populated(capsys: CaptureFixture[str], db_session: Session) -> None:
     _create_user(db_session, email="first@example.com", role="admin")
     _create_user(db_session, email="second@example.com", role="user", is_active=False)
 
@@ -233,7 +217,8 @@ def test_list_users_populated(
 def test_cli_main_create_admin(
     mock_getpass: MagicMock,
     db_session: Session,
-    capsys: pytest.CaptureFixture[str],
+    out_of_band_sessions: None,
+    capsys: CaptureFixture[str],
 ) -> None:
     test_args = [
         "veditor",
@@ -243,7 +228,6 @@ def test_cli_main_create_admin(
         "admin@example.com",
     ]
     with (
-        patch("app.cli.SessionLocal", side_effect=_session_factory(db_session)),
         patch.object(sys, "argv", test_args),
         patch("sys.stdin.isatty", return_value=True),
     ):
@@ -258,7 +242,7 @@ def test_cli_main_create_admin(
 
 
 def test_cli_main_create_admin_piped_stdin(
-    db_session: Session, capsys: pytest.CaptureFixture[str]
+    db_session: Session, out_of_band_sessions: None, capsys: CaptureFixture[str]
 ) -> None:
     test_args = [
         "veditor",
@@ -269,7 +253,6 @@ def test_cli_main_create_admin_piped_stdin(
     ]
     fake_stdin = io.StringIO("pipedpassword123\n")
     with (
-        patch("app.cli.SessionLocal", side_effect=_session_factory(db_session)),
         patch.object(sys, "argv", test_args),
         patch("sys.stdin", fake_stdin),
     ):
@@ -282,7 +265,7 @@ def test_cli_main_create_admin_piped_stdin(
 
 
 def test_cli_main_promote_user(
-    db_session: Session, capsys: pytest.CaptureFixture[str]
+    db_session: Session, out_of_band_sessions: None, capsys: CaptureFixture[str]
 ) -> None:
     user = _create_user(db_session, email="user@example.com", role="user")
 
@@ -296,7 +279,6 @@ def test_cli_main_promote_user(
         "organizer",
     ]
     with (
-        patch("app.cli.SessionLocal", side_effect=_session_factory(db_session)),
         patch.object(sys, "argv", test_args),
     ):
         main()
@@ -309,13 +291,12 @@ def test_cli_main_promote_user(
 
 
 def test_cli_main_list_users(
-    db_session: Session, capsys: pytest.CaptureFixture[str]
+    db_session: Session, out_of_band_sessions: None, capsys: CaptureFixture[str]
 ) -> None:
     _create_user(db_session, email="listed@example.com", role="user")
 
     test_args = ["veditor", "admin", "list-users"]
     with (
-        patch("app.cli.SessionLocal", side_effect=_session_factory(db_session)),
         patch.object(sys, "argv", test_args),
     ):
         main()
@@ -327,12 +308,12 @@ def test_cli_main_list_users(
 def test_cli_main_run_retention_sweep_sync(
     mock_sweep: MagicMock,
     db_session: Session,
-    capsys: pytest.CaptureFixture[str],
+    out_of_band_sessions: None,
+    capsys: CaptureFixture[str],
 ) -> None:
     mock_sweep.return_value = [1, 2]
     test_args = ["veditor", "admin", "run-retention-sweep"]
     with (
-        patch("app.cli.SessionLocal", side_effect=_session_factory(db_session)),
         patch.object(sys, "argv", test_args),
     ):
         main()
@@ -346,7 +327,8 @@ def test_cli_main_run_retention_sweep_sync(
 def test_cli_main_run_retention_sweep_enqueue(
     mock_enqueue: MagicMock,
     db_session: Session,
-    capsys: pytest.CaptureFixture[str],
+    out_of_band_sessions: None,
+    capsys: CaptureFixture[str],
 ) -> None:
     mock_job = MagicMock()
     mock_job.id = "job-sweep-123"
@@ -354,7 +336,6 @@ def test_cli_main_run_retention_sweep_enqueue(
 
     test_args = ["veditor", "admin", "run-retention-sweep", "--enqueue"]
     with (
-        patch("app.cli.SessionLocal", side_effect=_session_factory(db_session)),
         patch.object(sys, "argv", test_args),
     ):
         main()

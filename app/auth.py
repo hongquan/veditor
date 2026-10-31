@@ -142,10 +142,12 @@ def get_client(
 
     if should_update:
         client.last_used_at = now
-        # Update last_used_at out-of-band using an isolated session so we never
+        # Update last_used_at out-of-band using an isolated transaction so we never
         # prematurely commit the request session or risk detaching models on rollback.
+        # Binding to db.get_bind() yields a fresh pooled connection in production and
+        # joins the test transaction under the db_session fixture.
         try:
-            with SessionLocal() as separate_db:
+            with SessionLocal(bind=db.get_bind()) as separate_db:
                 separate_db.execute(
                     update(models.Client)
                     .where(models.Client.id == client.id)

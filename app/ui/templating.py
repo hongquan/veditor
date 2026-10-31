@@ -12,7 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import models
 from app.auth import CurrentUser
 from app.config import settings
-from app.db import SessionLocal, get_db
+from app.db import get_db, new_session
 from app.security import (
     decode_session_token,
     decode_sso_token,
@@ -96,7 +96,7 @@ def auth_context_processor(request: Request) -> dict[str, Any]:
                         if app_instance
                         else {}
                     )
-                    db_factory = overrides.get(get_db, SessionLocal)
+                    db_factory = overrides.get(get_db, new_session)
                     res = db_factory()
                     gen = res if hasattr(res, "__next__") else None
                     db = next(gen) if gen is not None else res
@@ -120,7 +120,7 @@ def auth_context_processor(request: Request) -> dict[str, Any]:
                     finally:
                         if gen is not None:
                             gen.close()
-                        elif db_factory is SessionLocal:
+                        elif db_factory is new_session:
                             db.close()
         if hasattr(request, "state"):
             request.state.user = user

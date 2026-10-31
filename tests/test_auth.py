@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -30,8 +30,6 @@ from app.security import (
     create_session_token,
     hash_password,
 )
-
-from .conftest import TestSessionLocal
 
 
 def _create_user(db: Session, **overrides: Any) -> User:
@@ -845,11 +843,7 @@ def test_get_client_throttles_last_used_at_updates(db_session: Session) -> None:
     stale_last_used = stale.last_used_at
     assert stale_last_used is not None
 
-    with patch(
-        "app.auth.SessionLocal",
-        side_effect=lambda: TestSessionLocal(bind=db_session.get_bind()),
-    ):
-        resolved_stale = get_client(api_key="stale-key", db=db_session)
+    resolved_stale = get_client(api_key="stale-key", db=db_session)
     assert resolved_stale.id == stale.id
 
     db_session.expire_all()

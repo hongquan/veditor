@@ -15,8 +15,6 @@ from app.db import get_db
 from app.main import app
 from app.storage import get_storage_backend
 
-from .conftest import TestSessionLocal
-
 client = TestClient(app)
 
 API_KEY = "valid"
@@ -87,13 +85,6 @@ def _talk(db: Session, talk_id: int) -> models.Talk:
 
 def _talk_jobs(db: Session, talk_id: int) -> list[models.Job]:
     return list(db.scalars(select(models.Job).where(models.Job.talk_id == talk_id)))
-
-
-def _worker_session_factory(db_session: Session) -> Callable[[], Session]:
-    def factory() -> Session:
-        return TestSessionLocal(bind=db_session.get_bind())
-
-    return factory
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +678,9 @@ def test_abort_talk_from_any_state(db_session: Session) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_lifecycle_full_ingest_to_done(db_session: Session) -> None:
+def test_lifecycle_full_ingest_to_done(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Mock-driven orchestration test covering the complete talk processing lifecycle.
 
     Drives a talk from ingest -> detecting -> pending_approval -> approve ->
@@ -719,7 +712,6 @@ def test_lifecycle_full_ingest_to_done(db_session: Session) -> None:
 
     raw_key = f"{talk.id}/raw/mock_source.mp4"
     cut_key = f"{talk.id}/cut/cut.mp4"
-    worker_sessions = _worker_session_factory(db_session)
 
     app.dependency_overrides[get_storage_backend] = lambda: mock_storage
 
@@ -729,7 +721,6 @@ def test_lifecycle_full_ingest_to_done(db_session: Session) -> None:
         patch("app.tasks.light_queue", mock_light_queue),
         patch("app.tasks.heavy_queue", mock_heavy_queue),
         patch("app.routes.talks.stage_recording", return_value=raw_key),
-        patch("app.tasks.SessionLocal", side_effect=worker_sessions),
         patch("app.tasks.get_storage_backend", return_value=mock_storage),
         patch("app.tasks.detect") as mock_detect,
         patch("app.tasks.cut"),
@@ -1141,7 +1132,9 @@ def test_lifecycle_disk_guard_insufficient_storage(db_session: Session) -> None:
             app.dependency_overrides.pop(get_storage_backend, None)
 
 
-def test_lifecycle_full_approve_review_flow_to_done(db_session: Session) -> None:
+def test_lifecycle_full_approve_review_flow_to_done(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Drive a talk from preview through review approve, assembly, and publishing to done.
 
     Validates review submission, pending_intro_outro transition, assembly orchestration,
@@ -1184,7 +1177,6 @@ def test_lifecycle_full_approve_review_flow_to_done(db_session: Session) -> None
     app.dependency_overrides[get_storage_backend] = lambda: mock_storage
 
     cut_key = f"{talk.id}/cut/cut.mp4"
-    worker_sessions = _worker_session_factory(db_session)
 
     try:
         with (
@@ -1192,7 +1184,6 @@ def test_lifecycle_full_approve_review_flow_to_done(db_session: Session) -> None
             patch("app.routes.talks.heavy_queue") as mock_hq,
             patch("app.tasks.light_queue", mock_lq),
             patch("app.tasks.heavy_queue", mock_hq),
-            patch("app.tasks.SessionLocal", side_effect=worker_sessions),
             patch("app.tasks.get_storage_backend", return_value=mock_storage),
             patch("app.tasks.concat"),
             patch("app.tasks.normalize"),
@@ -1279,7 +1270,9 @@ def test_lifecycle_full_approve_review_flow_to_done(db_session: Session) -> None
         app.dependency_overrides.pop(get_storage_backend, None)
 
 
-def test_lifecycle_needs_work_review_loop(db_session: Session) -> None:
+def test_lifecycle_needs_work_review_loop(
+    db_session: Session, out_of_band_sessions
+) -> None:
     """Drive consecutive needs_work cycles, verifying return to preview without stale jobs."""
     from app.tasks import job_cut, job_preview
 
@@ -1304,11 +1297,9 @@ def test_lifecycle_needs_work_review_loop(db_session: Session) -> None:
 
     raw_key = f"{talk.id}/raw/mock_source.mp4"
     cut_key = f"{talk.id}/cut/cut.mp4"
-    worker_sessions = _worker_session_factory(db_session)
 
     try:
         with (
-            patch("app.tasks.SessionLocal", side_effect=worker_sessions),
             patch("app.tasks.get_storage_backend", return_value=mock_storage),
             patch("app.tasks.cut"),
             patch("app.tasks.generate_preview"),

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 from uuid import uuid4
 
 import av
@@ -37,13 +38,13 @@ TestSessionLocal = sessionmaker(
 
 
 @pytest.fixture(scope="session")
-def setup_test_database() -> Iterator[None]:
+def setup_test_database() -> Generator[None]:
     Base.metadata.create_all(bind=_test_engine)
     yield
 
 
 @pytest.fixture
-def db_session(setup_test_database: Iterator[None]) -> Generator[Session]:
+def db_session(setup_test_database: Generator[None]) -> Generator[Session]:
     connection = _test_engine.connect()
     transaction = connection.begin()
     session = TestSessionLocal(bind=connection)
@@ -65,6 +66,17 @@ def db_session(setup_test_database: Iterator[None]) -> Generator[Session]:
 def _cleanup_dependency_overrides() -> Generator[None]:
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def out_of_band_sessions(db_session: Session) -> Generator[None]:
+    """Redirect new_session() callers (RQ workers, CLI, template fallbacks)
+    to the test database inside the per-test transaction."""
+    with patch(
+        "app.db.SessionLocal",
+        side_effect=lambda: TestSessionLocal(bind=db_session.get_bind()),
+    ):
+        yield
 
 
 # --- Fake Storage ---
