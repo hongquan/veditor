@@ -1,5 +1,5 @@
 import socket
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from email.message import Message
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -1215,3 +1215,161 @@ def test_event_create_and_patch_speaker_magic_link_expire_hours(
         json={"name": "Strict Int Event", "speaker_magic_link_expire_hours": True},
     )
     assert res_bool_post.status_code == 422
+
+
+def test_event_duration_days_property():
+    e1 = models.Event(
+        name="Summit", start_date=date(2026, 10, 25), end_date=date(2026, 10, 27)
+    )
+    assert e1.duration_days == 3
+
+    e2 = models.Event(
+        name="Single Day", start_date=date(2026, 10, 25), end_date=date(2026, 10, 25)
+    )
+    assert e2.duration_days == 1
+
+    e3 = models.Event(name="No Dates")
+    assert e3.duration_days == 1
+
+
+def test_event_schema_date_validation():
+    ev = schemas.EventCreate(
+        name="FOSSASIA", start_date=date(2026, 10, 25), end_date=date(2026, 10, 27)
+    )
+    assert ev.start_date == date(2026, 10, 25)
+    assert ev.end_date == date(2026, 10, 27)
+
+    with pytest.raises(
+        Exception, match="end_date must be greater than or equal to start_date"
+    ):
+        schemas.EventCreate(
+            name="Invalid", start_date=date(2026, 10, 27), end_date=date(2026, 10, 25)
+        )
+
+    with pytest.raises(
+        Exception, match="end_date must be greater than or equal to start_date"
+    ):
+        schemas.EventUpdate(start_date=date(2026, 10, 27), end_date=date(2026, 10, 25))
+
+
+def test_event_create_and_patch_dates(db_session: Session) -> None:
+    user = _create_user(db_session, email="dates-organizer@example.com")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        user_id=user.id, email=user.email, role="organizer", source="jwt"
+    )
+
+    res_post = client.post(
+        "/events",
+        json={
+            "name": "Multi-Day Conference",
+            "start_date": "2026-10-25",
+            "end_date": "2026-10-27",
+        },
+    )
+    assert res_post.status_code == 201
+    data_post = res_post.json()
+    assert data_post["start_date"] == "2026-10-25"
+    assert data_post["end_date"] == "2026-10-27"
+    event_id = data_post["id"]
+
+    res_patch = client.patch(
+        f"/events/{event_id}",
+        json={"end_date": "2026-10-28"},
+    )
+    assert res_patch.status_code == 200
+    db_session.expire_all()
+    patched_event = db_session.get(models.Event, event_id)
+    assert patched_event is not None
+    assert patched_event.start_date == date(2026, 10, 25)
+    assert patched_event.end_date == date(2026, 10, 28)
+
+    res_clear = client.patch(
+        f"/events/{event_id}",
+        json={"start_date": None, "end_date": None},
+    )
+    assert res_clear.status_code == 200
+    db_session.expire_all()
+    db_session.refresh(patched_event)
+    assert patched_event.start_date is None
+    assert patched_event.end_date is None
+
+    # Reset dates on patched_event to test partial patch conflict with
+    # existing start_date
+    patched_event.start_date = date(2026, 10, 25)
+    patched_event.end_date = date(2026, 10, 28)
+    db_session.commit()
+
+    res_invalid_patch = client.patch(
+        f"/events/{event_id}",
+        json={"end_date": "2026-10-20"},
+    )
+    assert res_invalid_patch.status_code == 400
+
+
+def test_event_timezone_validation_create_and_update(db_session: Session) -> None:
+    """Verify that unknown timezones return 422 while valid IANA timezones succeed."""
+    user = _create_user(db_session, email="tz-organizer@example.com")
+    event = _create_event(
+        db_session, name="Timezone Event", created_by_user_id=user.id, timezone="UTC"
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        user_id=user.id, email=user.email, role="organizer", source="jwt"
+    )
+
+    # 0. Direct schema validation
+    with pytest.raises(ValueError, match="Unknown or invalid timezone"):
+        schemas.EventCreate(name="Invalid TZ", timezone="Asia/Singapur")
+
+    with pytest.raises(ValueError, match="Unknown or invalid timezone"):
+        schemas.EventUpdate(timezone="Asia/Singapur")
+
+    # 1. Invalid timezone on create returns 422
+    res_invalid_create = client.post(
+        "/events",
+        json={
+            "name": "Invalid TZ Event",
+            "timezone": "Asia/Singapur",
+        },
+    )
+    assert res_invalid_create.status_code == 422
+    assert "timezone" in str(res_invalid_create.json()["detail"])
+
+    # 2. Valid timezone on create succeeds
+    res_valid_create = client.post(
+        "/events",
+        json={
+            "name": "Singapore Summit",
+            "timezone": "Asia/Singapore",
+        },
+    )
+    assert res_valid_create.status_code == 201
+    assert res_valid_create.json()["timezone"] == "Asia/Singapore"
+
+    # 3. Invalid timezone on update returns 422
+    res_invalid_update = client.patch(
+        f"/events/{event.id}",
+        json={"timezone": "Invalid/Zone"},
+    )
+    assert res_invalid_update.status_code == 422
+    assert "timezone" in str(res_invalid_update.json()["detail"])
+
+    # 4. Valid timezone on update succeeds
+    res_valid_update = client.patch(
+        f"/events/{event.id}",
+        json={"timezone": "America/New_York"},
+    )
+    assert res_valid_update.status_code == 200
+    db_session.expire_all()
+    reloaded_event = db_session.get(models.Event, event.id)
+    assert reloaded_event is not None
+    assert reloaded_event.timezone == "America/New_York"
+
+    # 5. Clearing timezone with None or empty string succeeds
+    res_clear_tz = client.patch(
+        f"/events/{event.id}",
+        json={"timezone": None},
+    )
+    assert res_clear_tz.status_code == 200
+    db_session.expire_all()
+    db_session.refresh(reloaded_event)
+    assert reloaded_event.timezone is None
